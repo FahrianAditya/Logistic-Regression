@@ -1,0 +1,142 @@
+---
+title: "logistic_regression"
+output: html_document
+---
+
+# Intro
+
+## 1. Library
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(caret)
+library(e1071)
+library(rsample)
+library(ggplot2)
+library(GGally)
+```
+
+### 1.1 Read Data
+
+```{r}
+loan <- read.csv("data/loan2017Q4.csv")
+```
+
+### 1.2 Data Wrangling
+
+```{r}
+glimpse(loan)
+```
+
+### 1.3 Membuang variabel yang tidak diperlukan dan menyesuaikan tipe data
+
+```{r}
+loans_clean <- loan %>% 
+  mutate(grdCtoA = as.factor(grdCtoA),
+         not_paid = as.factor(not_paid),
+         delinq_2yrs = as.factor(delinq_2yrs)) %>% 
+  select(-c(verified, grade,annual_inc) )
+
+glimpse(loans_clean)
+```
+
+### 1.4 Exploratory Data
+
+```{r}
+## Cek missing value
+colSums(is.na(loans_clean))
+```
+
+```{r, warning=FALSE}
+ggcorr(data = loans_clean, label = T, hjust = 1,layout.exp = 2)
+```
+
+
+```{r}
+## Cek persebaran data
+summary(loans_clean)
+```
+
+### 1.5 Cek proporsi data
+
+Yang akan menjadi target adalah **not_paid** (paid = 0, not_paid = 1)
+
+```{r}
+prop.table(table(loans_clean$not_paid))
+```
+
+## 2. Cross-Validation
+
+```{r}
+set.seed(400)
+init <- initial_split(data = loans_clean, prop = 0.8, strata = not_paid)
+
+loan_train <- training(init)
+loan_test <- testing(init)
+```
+
+```{r}
+## Re-check class imbalance
+prop.table(table(loan_train$not_paid))
+prop.table(table(loan_test$not_paid))
+```
+
+## 3. Build Model
+
+```{r}
+head(loan_train)
+```
+
+```{r}
+## Membuat model
+model.loans <- glm(not_paid ~ ., data = loan_train, family = "binomial")
+summary(model.loans)
+```
+
+```{r}
+loan_model <- glm(not_paid ~ installment + log_inc + purpose + verification_status + home_ownership + grdCtoA , data = loan_train,family= "binomial")
+summary(loan_model)
+```
+
+## 4. Predict
+
+```{r}
+## Melakukan prediksi probability `not_paid` untuk data loan_test dan disimpan pada kolom baru bernama `pred.Risk`
+loan_test$pred.risk <- predict(object = loan_model, 
+        newdata = loan_test, 
+        type = "response")
+
+head(loan_test)
+```
+
+```{r}
+## Membuat label predik berdasarkan pred.Risk
+loan_test$pred.label <- ifelse(loan_test$pred.risk < 0.5 ,0, 1)
+
+loan_test$pred.label <- as.factor(loan_test$pred.label)
+str(loan_test)
+```
+
+### 4.1 Melihat hasil prediksi
+
+```{r}
+loan_test %>% 
+  select(not_paid, pred.risk, pred.label) %>% 
+  head(6)
+```
+
+## 5. Model Evaluation
+
+```{r}
+## Cek menggunakan confusionMatrix
+confusionMatrix(data = loan_test$pred.label,reference = loan_test$not_paid, positive = "1")
+```
+
+**Kesimpulan: **Didapatkan akurasi sebesar **62,8%**
+
+```{r}
+## Pos Pred Value/Precision
+## TP/(TP+FP)
+93/(93+53)
+```
+**Kesimpulan: **Didapatkan akurasi positive prediction/precision sebesar **63,6%**
